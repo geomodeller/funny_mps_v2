@@ -38,7 +38,7 @@ def predictive_model(data_x, data_y,
 
     return counts / counts.sum()
 
-def multi_points_modeling(TI, template_size, random_seed, real_nx, real_ny, real_nz):
+def multi_points_modeling(TI, template_size, random_seed, real_nx, real_ny, real_nz, hard_data = None, verbose = False):
 
 
     unique_facies = list(np.unique(TI).astype(np.int8))
@@ -52,6 +52,13 @@ def multi_points_modeling(TI, template_size, random_seed, real_nx, real_ny, real
 
     # TODO: generate model
     realization = np.ones((real_nx+2*padding_x, real_ny+2*padding_x, real_nz+2*padding_z))*-1
+    if hard_data is not None:
+        if padding_z != 0:
+            realization[padding_x:-padding_x, padding_y:-padding_y, padding_z:-padding_z] = hard_data
+        else:
+            realization[padding_x:-padding_x, padding_y:-padding_y, :] = hard_data
+        if verbose:
+            print('hard data is conditioned')
     x_0, x_1 = int(0 +padding_x), int(realization.shape[0] - padding_x)
     y_0, y_1 = int(0 +padding_y), int(realization.shape[1] - padding_y)
     z_0, z_1 = int(0 +padding_z), int(realization.shape[2] - padding_z)
@@ -62,6 +69,8 @@ def multi_points_modeling(TI, template_size, random_seed, real_nx, real_ny, real
 
     
     for ii, jj, kk in zip(random_path[0].T, random_path[1].T, random_path[2].T):
+        if realization[ii, jj, kk] != -1:
+            continue
         template = realization[ii-padding_x:ii+(padding_x+1),
                             jj-padding_y:jj+(padding_y+1),
                             kk-padding_z:kk+(padding_z+1)].copy().flatten()
