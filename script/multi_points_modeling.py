@@ -45,10 +45,7 @@ def multi_points_modeling(TI, template_size, random_seed, real_nx, real_ny, real
     facies_ratio = [np.sum(TI==f)/np.prod(TI.shape) for f in unique_facies]
     padding_x, padding_y, padding_z = int((template_size[0]-1)/2), int((template_size[1]-1)/2), int((template_size[2]-1)/2)
 
-    center_index = int((np.prod(template_size)-1)/2)
-    flag = [i for i in range(np.prod(template_size)) if i != center_index]
-
-    data_x, data_y = curate_training_image(TI, template_size, 1.0)
+    data_x, data_y, flag = curate_training_image(TI, template_size, 1.0)
 
     # TODO: generate model
     realization = np.ones((real_nx+2*padding_x, real_ny+2*padding_x, real_nz+2*padding_z))*-1
@@ -80,3 +77,38 @@ def multi_points_modeling(TI, template_size, random_seed, real_nx, real_ny, real
         return realization[padding_x:-padding_x, padding_y:-padding_y, padding_z:-padding_z]
     else:
         return realization[padding_x:-padding_x, padding_y:-padding_y]
+    
+def multi_points_modeling_multi_scaled(TI, n_level, level_size,
+                                      template_size, 
+                                      random_seed, 
+                                      real_nx, real_ny, real_nz, 
+                                      hard_data = None, verbose = False):
+    
+    TI_s, grid_size_s = [], []
+    nx, ny, nz = real_nx, real_ny, real_nz
+    for level in range(n_level):
+        TI_s.append(TI[::level_size**level, ::level_size**level, ::level_size**level])
+        grid_size_s.append((nx, ny, nz))
+        nx, ny, nz = round(nx/level_size), round(ny/level_size), 1
+
+
+    real_s = []
+    if hard_data is None:
+        real = np.ones(grid_size_s[-1]) * -1
+    else:
+        real = hard_data
+        
+    for idx, (level, TI_at_level, grid_size_at_level) in enumerate(zip(range(n_level)[::-1],TI_s[::-1], grid_size_s[::-1])):
+        real = multi_points_modeling(TI_at_level, 
+                                    template_size, 
+                                    random_seed, 
+                                    grid_size_at_level[0], grid_size_at_level[1], grid_size_at_level[2], 
+                                    real, 
+                                    verbose)
+        real_s.append(real)
+        if level == 0:
+            break
+        real_next = np.ones(grid_size_s[level-1]) * -1
+        real_next[1::level_size, 1::level_size, :] = real
+        real = real_next.copy()
+    return real
