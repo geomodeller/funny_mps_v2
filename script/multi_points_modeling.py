@@ -4,6 +4,7 @@ import numpy as np
 import sys
 sys.path.insert(0, './script')
 from curate_training_image import curate_training_image
+import time
 
 @jit(nopython=True)
 def fast_bincount(arr, minlength):
@@ -113,16 +114,24 @@ def multi_points_modeling(TI,
                                                                                                     verbose = verbose)
     padding_x, padding_y, padding_z = int((template_size[0]-1)/2), int((template_size[1]-1)/2), int((template_size[2]-1)/2)
 
+    
     # for one iteration - randomly generate realization
     np.random.seed(random_seed)
     np.random.shuffle(random_path.T)
-    return _run_mps(realization, facies_ratio, unique_facies, 
-                    data_x, data_y, flag, random_path, 
-                    padding_x, padding_y, padding_z)
-    
+    if soft_data is None:
+        return _run_mps(realization, facies_ratio, unique_facies, 
+                        data_x, data_y, flag, random_path, 
+                        padding_x, padding_y, padding_z, verbose = verbose)
+    else:
+        return _run_mps_w_soft_data(realization, facies_ratio, unique_facies, 
+                        data_x, data_y, flag, random_path, 
+                        padding_x, padding_y, padding_z, soft_data=soft_data,
+                        verbose = verbose)
+        
 def _run_mps(realization, facies_ratio, unique_facies, 
              data_x, data_y, flag, random_path, 
-             padding_x, padding_y, padding_z):
+             padding_x, padding_y, padding_z,
+             verbose = False):
     """
     Run one iteration of the MPS simulation.
 
@@ -138,10 +147,14 @@ def _run_mps(realization, facies_ratio, unique_facies,
         padding_x (int): X-padding of the template.
         padding_y (int): Y-padding of the template.
         padding_z (int): Z-padding of the template.
+        verbose (bool, optional): If True, print progress messages. Defaults to False.
 
     Returns:
         np.ndarray: The updated realization grid with shape (real_nx, real_ny, real_nz)
     """
+    if verbose:
+        print("Running one iteration of the MPS simulation...")
+        start = time.time()
     for ii, jj, kk in zip(random_path[0].T, random_path[1].T, random_path[2].T):
         if realization[ii, jj, kk] != -1:
             continue
@@ -156,7 +169,59 @@ def _run_mps(realization, facies_ratio, unique_facies,
                                                                       facies_ratio, 
                                                                       unique_facies))
     realization =  _remove_padding(realization, padding_x, padding_y, padding_z)
+    if verbose:
+        end = time.time()
+        print(f"One iteration of the MPS simulation completed in {end-start:.2f} seconds.")
     return realization
+
+
+def _run_mps_w_soft_data(realization, facies_ratio, unique_facies, 
+             data_x, data_y, flag, random_path, 
+             padding_x, padding_y, padding_z, soft_data,
+             verbose = False):
+    """
+    Run one iteration of the MPS simulation.
+
+    Args:
+        realization (np.ndarray): The realization grid to condition the simulation.
+        facies_ratio (list): The proportion of each facies in the TI.
+        unique_facies (list): The unique facies codes present in the TI.
+        data_x (np.ndarray): The input features from the training image (data_x).
+        data_y (np.ndarray): The target outputs from the training image (data_y).
+        flag (np.ndarray): A boolean mask indicating which values in each template
+                           are valid (not -1) and should be used for prediction.
+        random_path (np.ndarray): A 3D array of random coordinates to visit in order.
+        padding_x (int): X-padding of the template.
+        padding_y (int): Y-padding of the template.
+        padding_z (int): Z-padding of the template.
+        verbose (bool, optional): If True, print progress messages. Defaults to False.
+
+    Returns:
+        np.ndarray: The updated realization grid with shape (real_nx, real_ny, real_nz)
+    """
+    if verbose:
+        print("Running one iteration of the MPS simulation...")
+        start = time.time()
+    for ii, jj, kk in zip(random_path[0].T, random_path[1].T, random_path[2].T):
+        if realization[ii, jj, kk] != -1:
+            continue
+        template = realization[ii-padding_x:ii+(padding_x+1),
+                            jj-padding_y:jj+(padding_y+1),
+                            kk-padding_z:kk+(padding_z+1)].copy().flatten()
+        input_x = template[flag].reshape(1,-1)  
+        tau = soft_data[ii-padding_x, jj-padding_y, kk-padding_z, :]
+
+        prob = predictive_model(data_x, data_y,  input_x,  facies_ratio, unique_facies)*tau
+        prob = prob/np.sum(prob)
+        realization[ii, jj, kk] = np.random.choice(unique_facies, 
+                                                p=prob)
+
+    realization =  _remove_padding(realization, padding_x, padding_y, padding_z)
+    if verbose:
+        end = time.time()
+        print(f"One iteration of the MPS simulation completed in {end-start:.2f} seconds.")
+    return realization
+
 
 def _remove_padding(realization, padding_x, padding_y, padding_z):
     """
