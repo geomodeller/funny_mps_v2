@@ -153,7 +153,7 @@ def _run_mps(realization, facies_ratio, unique_facies,
         np.ndarray: The updated realization grid with shape (real_nx, real_ny, real_nz)
     """
     if verbose:
-        print("Running one iteration of the MPS simulation...")
+        print("... starting [_run_mps]")
         start = time.time()
     for ii, jj, kk in zip(random_path[0].T, random_path[1].T, random_path[2].T):
         if realization[ii, jj, kk] != -1:
@@ -171,7 +171,7 @@ def _run_mps(realization, facies_ratio, unique_facies,
     realization =  _remove_padding(realization, padding_x, padding_y, padding_z)
     if verbose:
         end = time.time()
-        print(f"One iteration of the MPS simulation completed in {end-start:.2f} seconds.")
+        print(f"==> finishing [_run_mps] in {end-start:.2f} seconds.")
     return realization
 
 
@@ -273,7 +273,7 @@ def _preprocessing_MPS(TI,
     facies_ratio = [np.sum(TI==f)/np.prod(TI.shape) for f in unique_facies]
     padding_x, padding_y, padding_z = int((template_size[0]-1)/2), int((template_size[1]-1)/2), int((template_size[2]-1)/2)
 
-    data_x, data_y, flag = curate_training_image(TI, template_size, 1.0)
+    data_x, data_y, flag = curate_training_image(TI, template_size, 1.0, verbose = verbose)
 
     # TODO: generate model
     realization = np.ones((real_nx+2*padding_x, real_ny+2*padding_x, real_nz+2*padding_z))*-1
@@ -283,7 +283,7 @@ def _preprocessing_MPS(TI,
         else:
             realization[padding_x:-padding_x, padding_y:-padding_y, :] = hard_data
         if verbose:
-            print('hard data is conditioned')
+            print('... [_preprocessing_MPS] hard data is conditioned')
     x_0, x_1 = int(0 +padding_x), int(realization.shape[0] - padding_x)
     y_0, y_1 = int(0 +padding_y), int(realization.shape[1] - padding_y)
     z_0, z_1 = int(0 +padding_z), int(realization.shape[2] - padding_z)
@@ -298,7 +298,8 @@ def multi_points_modeling_multi_scaled(TI, n_level, level_size,
                                       random_seed, 
                                       real_nx, real_ny, real_nz, 
                                       hard_data = None, 
-                                      verbose = False):
+                                      verbose = False,
+                                      return_muti_scale_real = False):
     
     TI_s, grid_size_s = [], []
     nx, ny, nz = real_nx, real_ny, real_nz
@@ -314,17 +315,31 @@ def multi_points_modeling_multi_scaled(TI, n_level, level_size,
     else:
         real = hard_data
     
+    if verbose:
+        print('[MPS] multi-scale MPS starts')
     for idx, (level, TI_at_level, grid_size_at_level) in enumerate(zip(range(n_level)[::-1],TI_s[::-1], grid_size_s[::-1])):
+        if verbose:
+            print("---"*10)
+            print(f'<Scale {level} start> Grid size is {grid_size_at_level}')
         real = multi_points_modeling(TI_at_level, 
                                     template_size, 
                                     random_seed, 
                                     grid_size_at_level[0], grid_size_at_level[1], grid_size_at_level[2], 
                                     real, 
-                                    verbose)
+                                    verbose=verbose)
         real_s.append(real)
-        if level == 0:
+        if verbose:
+            print(f'<Scale {level} start> Done')
+        if level == 1:
             break
+
         real_next = np.ones(grid_size_s[level-1]) * -1
         real_next[1::level_size, 1::level_size, :] = real
         real = real_next.copy()
-    return real
+        print('no no no')
+
+    if return_muti_scale_real:
+        return real_s
+    else:
+        return real
+    
