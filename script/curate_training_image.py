@@ -1,7 +1,7 @@
 import numpy as np
 import itertools
 
-def curate_training_image(TI: np.ndarray, template_size: list[int], percentage_2_use: float = 0.8):
+def curate_training_image(TI: np.ndarray, template_size: list[int], percentage_2_use: float = 0.8, cross = True):
     # define the training image size and template size
     """
     Curates a training image by extracting a tabular form dataset based on the provided template size.
@@ -41,8 +41,16 @@ def curate_training_image(TI: np.ndarray, template_size: list[int], percentage_2
 
     # train some ML model the above tabular data
     center_index = int((np.prod(template_size)-1)/2)
-    flag = [i for i in range(np.prod(template_size)) if i != center_index]
-    data_x = data[:, flag].reshape(-1, np.prod(template_size)-1).astype(np.int16)
+    indexes = np.arange(np.prod(template_size))
+    if cross:
+        ind_x, ind_y, ind_z = indexes%template_size[0], indexes//(template_size[0]), np.zeros_like(indexes)
+        ind_x_center, ind_y_center, ind_z_center = ind_x[center_index], ind_y[center_index], ind_z[center_index]
+        dist_from_center = [sum([abs(ind_x[i]-ind_x_center), abs(ind_y[i]-ind_y_center), abs(ind_z[i]-ind_z_center)]) for i in indexes]
+        flag = [i for i in indexes if (i != center_index) & (dist_from_center[i]<=template_size[0]//2)]
+        data_x = data[:, flag].reshape(-1, int((np.prod(template_size)-1)/2)).astype(np.int16)
+    else:
+        flag = [i for i in indexes if i != center_index]
+        data_x = data[:, flag].reshape(-1, np.prod(template_size)-1).astype(np.int16)
     data_y = data[:, center_index].reshape(-1, 1).astype(np.int16)
 
     # in case of using partial data
@@ -51,4 +59,4 @@ def curate_training_image(TI: np.ndarray, template_size: list[int], percentage_2
         data_x = data_x[mask]
         data_y = data_y[mask]
 
-    return data_x, data_y
+    return data_x, data_y, flag
